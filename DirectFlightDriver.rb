@@ -401,11 +401,12 @@ class DirectFlightSoap < ::SOAP::RPC::Driver
     ]
   ]
 
-  def initialize(endpoint_url = nil)
+  def initialize(username, apikey, endpoint_url = nil)
     endpoint_url ||= DefaultEndpointUrl
     super(endpoint_url, nil)
     self.mapping_registry = MappingRegistry
     init_methods
+    self.options["protocol.http.basic_auth"] << [endpoint_url, username, apikey]
   end
 
 private
@@ -429,3 +430,31 @@ private
   end
 end
 
+
+# The following function overrides are necessary as of Ruby 1.8.6
+# (which includes SOAP 1.5.5) because of some unimplemented
+# functionality in /usr/lib/ruby/1.8/soap/netHttpClient.rb
+module SOAP
+  class NetHttpClient
+    
+    def set_basic_auth(uri, user_id, passwd)
+      @basic_auth = [user_id, passwd]
+    end
+    
+    def post(url, req_body, header = {})
+      unless url.is_a?(URI)
+        url = URI.parse(url)
+      end
+      extra = header.dup
+      extra['User-Agent'] = @agent if @agent
+      unless @basic_auth.nil?
+        extra['authorization'] = 'Basic ' + ["#{@basic_auth[0]}:#{@basic_auth[1]}"].pack('m').delete("\r\n")
+      end
+      res = start(url) { |http|
+        http.post(url.request_uri, req_body, extra)
+      }
+      Response.new(res)
+    end
+
+  end
+end
